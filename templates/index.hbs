@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>mpvserve</title>
+  <link href="/public/main.css" rel="stylesheet">
+  <link rel="icon" href="/public/icons/video.svg">
+</head>
+<body>
+
+<h1>Browsing {{current_path}}</h1>
+
+<div class="wrapper dir">
+  {{#unless (eq current_path "./")}}
+    <div class="row">
+      <a href="..">
+        <div class="icon1 dir"></div>
+        <div class="link_text">..</div>
+      </a>
+    </div>
+  {{/unless}}
+  {{#each result.dirs}}
+    <div class="row">
+      <a href="{{link}}">
+        <div class="icon1 dir"></div>
+        <div class="link_text">{{name}}</div>
+      </a>
+    </div>
+  {{/each}}
+</div>
+<br />
+<div class="wrapper movies">
+  {{#each result.movies}}
+    <div class="row">
+      <a href="{{link}}">
+        <div class="icon1 video"></div>
+        <div class="link_text">{{name}}</div>
+      </a>
+    </div>
+  {{/each}}
+</div>
+
+</body>
+</html>

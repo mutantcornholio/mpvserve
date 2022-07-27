@@ -15,12 +15,15 @@ body {
     display: flex;
 }
 
-.row:nth-of-type(2) {
+.row:nth-of-type(even) {
     background-color: #1e1e1e;
 }
 
 .link_text {
     line-height: 44px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .wrapper {
@@ -55,6 +58,7 @@ a:active {
 .icon1 {
     height: 44px;
     width: 44px;
+    min-width: 44px;
     filter: invert(75%);
     background-repeat: no-repeat;
     background-position: center;

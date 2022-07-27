@@ -14,6 +14,7 @@ use rocket::fs::FileServer;
 use rocket::response::{content, Redirect};
 use rocket::State;
 use rocket_dyn_templates::{context, Template};
+use rocket_seek_stream::SeekStream;
 
 /// Web server which creates mpv:// links for movies in the directory
 #[derive(Parser, Debug)]
@@ -76,13 +77,19 @@ async fn browse(
     }
 }
 
+#[get("/files/<path..>")]
+fn files<'a>(path: PathBuf, state: &State<GlobalState>) -> std::io::Result<SeekStream<'a>> {
+    let result_path = Path::new(&state.root_dir).join(&path);
+
+    SeekStream::from_path(result_path)
+}
+
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
     let args = CliArgs::parse();
 
     let _rocket = rocket::build()
-        .mount("/", routes![index, browse])
-        .mount("/files", FileServer::from(&args.dir))
+        .mount("/", routes![index, browse, files])
         .mount("/public", FileServer::from("./public"))
         .manage(GlobalState { root_dir: args.dir })
         .attach(Template::fairing())

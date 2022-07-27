@@ -1,6 +1,6 @@
 use crate::http;
 use log::{trace, warn};
-use rocket::serde::{Deserialize, Serialize};
+use rocket::serde::Serialize;
 use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
@@ -8,27 +8,19 @@ use urlencoding;
 
 static MOVIE_EXTENSIONS: &'static [&'static str] = &["mkv", "avi"];
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
-pub struct Dir {
+pub struct ResultItem {
     name: String,
     full_path: String,
     link: String,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(crate = "rocket::serde")]
-pub struct Movie {
-    name: String,
-    full_path: String,
-    link: String,
-}
-
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct ReadDirResult {
-    pub dirs: Vec<Dir>,
-    pub movies: Vec<Movie>,
+    pub dirs: Vec<ResultItem>,
+    pub movies: Vec<ResultItem>,
 }
 
 fn get_urlencoded_path(path_from_root: &Path) -> Option<Vec<String>> {
@@ -132,7 +124,7 @@ fn put_entry(
 
     if file_type.is_dir() {
         match get_dir_link(&path_from_root) {
-            Some(link) => result.dirs.push(Dir {
+            Some(link) => result.dirs.push(ResultItem {
                 name: String::from(entry_filename),
                 full_path: String::from(entry_path_str),
                 link,
@@ -145,7 +137,7 @@ fn put_entry(
                 for &movie_ext in MOVIE_EXTENSIONS {
                     if ext.eq(movie_ext) {
                         match get_mpv_link(&path_from_root, &host_header) {
-                            Some(link) => result.movies.push(Movie {
+                            Some(link) => result.movies.push(ResultItem {
                                 name: String::from(entry_filename),
                                 full_path: String::from(entry_path_str),
                                 link,
@@ -183,6 +175,11 @@ pub async fn read_dir(
             return Err(err);
         }
     }
+
+    let comparator = |a: &ResultItem, b: &ResultItem| a.name.to_string().cmp(&b.name.to_string());
+
+    res.dirs.sort_by(comparator);
+    res.movies.sort_by(comparator);
 
     Ok(res)
 }

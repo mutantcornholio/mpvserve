@@ -13,3 +13,4 @@ clap = { version = "^3", features = ["derive"] }
 urlencoding = "2.1.0"
 rocket_dyn_templates = {version = "^0.1.0-rc.2", features = ["handlebars"]}
 rocket_seek_stream = {git="https://github.com/StappsWorld/rocket_seek_stream"}
+anyhow = "1.0.58"

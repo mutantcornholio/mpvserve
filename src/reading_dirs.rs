@@ -1,9 +1,10 @@
 use crate::http;
-use log::{trace, warn};
+use anyhow::{Context, Result};
+use log::trace;
 use rocket::serde::Serialize;
+use std::fs;
 use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
-use std::{fs, io};
 use urlencoding;
 
 static MOVIE_EXTENSIONS: &'static [&'static str] = &["mkv", "avi"];
@@ -27,49 +28,93 @@ fn get_urlencoded_path(path_from_root: &Path) -> Option<Vec<String>> {
     let mut res = Vec::new();
 
     for path_item in path_from_root.into_iter() {
-        match path_item.to_str() {
-            Some(item) => {
-                res.push(String::from(urlencoding::encode(item)));
-            }
-            None => return None,
-        }
+        let item = path_item.to_str()?;
+        res.push(String::from(urlencoding::encode(item)));
     }
 
     Some(res)
 }
 
-fn get_dir_link(path_from_root: &Path) -> Option<String> {
-    match get_urlencoded_path(&path_from_root) {
-        Some(encoded_path) => {
-            let mut res = String::from("/browse");
+fn get_dir_link(urlencoded_path_parts: &Vec<String>) -> String {
+    let mut res = String::from("/browse");
 
-            for item in encoded_path {
-                res += "/";
-                res += &item;
-            }
-
-            Some(res)
-        }
-        None => None,
+    for item in urlencoded_path_parts {
+        res += "/";
+        res += &item;
     }
+
+    res
 }
 
-fn get_mpv_link(path_from_root: &Path, host_header: &http::HostHeader) -> Option<String> {
-    match get_urlencoded_path(&path_from_root) {
-        Some(encoded_path) => {
-            let mut res = String::from("mpv://");
-            res += host_header.to_string();
-            res += "/files";
+fn get_mpv_link(urlencoded_path_parts: &Vec<String>, host_header: &http::HostHeader) -> String {
+    let mut res = String::from("mpv://");
+    res += host_header.to_string();
+    res += "/files";
 
-            for item in encoded_path {
-                res += "/";
-                res += &item;
-            }
-
-            Some(res)
-        }
-        None => None,
+    for item in urlencoded_path_parts {
+        res += "/";
+        res += &item;
     }
+
+    res
+}
+
+#[derive(Debug)]
+enum FileTypes {
+    File,
+    Dir,
+    Other,
+}
+
+#[derive(Debug)]
+struct PathProperties {
+    filename: String,
+    file_type: FileTypes,
+    full_path: String,
+    urlencoded_path_parts: Vec<String>,
+    extension: Option<String>,
+}
+
+fn get_extension(entry_pathbuf: &PathBuf) -> Option<String> {
+    let ext = entry_pathbuf.extension()?.to_str()?;
+
+    Some(String::from(ext))
+}
+
+fn get_path_properties(entry: &DirEntry, root_dir: &PathBuf) -> Option<PathProperties> {
+    let entry_pathbuf = entry.path();
+    let entry_pathbuf_str = entry_pathbuf.to_str()?;
+    let full_path = String::from(entry_pathbuf_str);
+
+    let filename = String::from(entry_pathbuf.file_name()?.to_str()?);
+
+    let file_type = entry.file_type().ok()?;
+
+    let root_dir_with_trailing_slash = String::from(root_dir.to_str()?) + "/";
+    let stripped_path = entry_pathbuf_str.strip_prefix(&root_dir_with_trailing_slash)?;
+
+    let urlencoded_path_parts = get_urlencoded_path(&PathBuf::from(stripped_path))?;
+
+    // Unlike everything else, not getting an extension is expected
+    let extension = get_extension(&entry_pathbuf);
+
+    let file_type: FileTypes = {
+        if file_type.is_file() {
+            FileTypes::File
+        } else if file_type.is_dir() {
+            FileTypes::Dir
+        } else {
+            FileTypes::Other
+        }
+    };
+
+    Some(PathProperties {
+        filename,
+        file_type,
+        full_path,
+        urlencoded_path_parts,
+        extension,
+    })
 }
 
 fn put_entry(
@@ -77,102 +122,65 @@ fn put_entry(
     root_dir: &PathBuf,
     host_header: &http::HostHeader,
     result: &mut ReadDirResult,
-) {
+) -> Result<()> {
     trace!("put_entry {:?}", entry);
-    let entry_path = entry.path();
 
-    let entry_path_str = match entry_path.to_str() {
-        Some(path) => path,
-        None => return,
-    };
-    trace!("put_entry, entry_path_str: {}", entry_path_str);
+    let path_properties = get_path_properties(&entry, &root_dir)
+        .with_context(|| format!("gettint path properties of {:?} failed", entry))?;
 
-    let entry_filename = match entry_path.file_name() {
-        Some(path) => match path.to_str() {
-            Some(path) => path,
-            None => return,
-        },
-        None => return,
-    };
-    trace!("put_entry, entry_filename: {}", entry_filename);
+    trace!("put_entry, path_properties {:?}", path_properties);
 
-    let file_type = match entry.file_type() {
-        Ok(file_type) => file_type,
-        Err(err) => {
-            warn!(
-                "Failed to get file_type of entry {}: {:?}",
-                entry_path_str, err
-            );
-            return;
-        }
-    };
-    trace!("put_entry, file_type: {}, {:?}", entry_filename, file_type);
-
-    let root_dir_with_slash_str = match root_dir.to_str() {
-        Some(path) => String::from(path) + "/",
-        None => return,
-    };
-    trace!(
-        "put_entry, root_dir_with_slash_str: {:?}",
-        root_dir_with_slash_str
-    );
-
-    let path_from_root = match entry_path_str.strip_prefix(&root_dir_with_slash_str) {
-        Some(path) => PathBuf::from(path),
-        None => return,
-    };
-
-    if file_type.is_dir() {
-        match get_dir_link(&path_from_root) {
-            Some(link) => result.dirs.push(ResultItem {
-                name: String::from(entry_filename),
-                full_path: String::from(entry_path_str),
+    match path_properties.file_type {
+        FileTypes::Dir => {
+            let link = get_dir_link(&path_properties.urlencoded_path_parts);
+            result.dirs.push(ResultItem {
+                name: path_properties.filename.clone(),
+                full_path: path_properties.full_path.clone(),
                 link,
-            }),
-            None => {}
+            })
         }
-    } else if file_type.is_file() {
-        match entry.path().extension() {
+        FileTypes::File => match path_properties.extension {
             Some(ext) => {
-                for &movie_ext in MOVIE_EXTENSIONS {
-                    if ext.eq(movie_ext) {
-                        match get_mpv_link(&path_from_root, &host_header) {
-                            Some(link) => result.movies.push(ResultItem {
-                                name: String::from(entry_filename),
-                                full_path: String::from(entry_path_str),
-                                link,
-                            }),
-                            None => {}
-                        }
-                    }
+                if MOVIE_EXTENSIONS.contains(&ext.as_str()) {
+                    let link = get_mpv_link(&path_properties.urlencoded_path_parts, &host_header);
+
+                    result.movies.push(ResultItem {
+                        name: path_properties.filename.clone(),
+                        full_path: path_properties.full_path.clone(),
+                        link,
+                    });
                 }
             }
-            None => {}
-        };
+            _ => {}
+        },
+        _ => {}
     }
+
+    Ok(())
 }
 
 pub async fn read_dir(
     dir: &PathBuf,
     root_dir: &PathBuf,
     host_header: &http::HostHeader,
-) -> io::Result<ReadDirResult> {
+) -> Result<ReadDirResult> {
     let mut res = ReadDirResult {
         dirs: Vec::new(),
         movies: Vec::new(),
     };
 
-    match fs::read_dir(&dir) {
-        Ok(result) => {
-            for entry in result {
-                match entry {
-                    Ok(entry) => put_entry(&entry, &root_dir, &host_header, &mut res),
-                    Err(err) => println!("Error while iterating over directory: {}", err),
-                }
+    let read_dir_res =
+        fs::read_dir(&dir).with_context(|| format!("failed to read dir {:?}", &dir))?;
+
+    for entry in read_dir_res {
+        match entry {
+            Ok(entry) => {
+                put_entry(&entry, &root_dir, &host_header, &mut res)
+                    .with_context(|| format!("failed to process entry {:?}", &entry))?;
             }
-        }
-        Err(err) => {
-            return Err(err);
+            Err(err) => {
+                println!("Error while iterating over directory: {}", err);
+            }
         }
     }
 

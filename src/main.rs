@@ -4,6 +4,7 @@ mod reading_dirs;
 #[macro_use]
 extern crate rocket;
 
+use anyhow::anyhow;
 use clap::Parser;
 use log::debug;
 use std::format;
@@ -29,7 +30,7 @@ struct GlobalState {
     root_dir: String,
 }
 
-fn render_error_page(err: &dyn std::error::Error, description: &str) -> content::RawHtml<Template> {
+fn render_error_page(err: &anyhow::Error, description: &str) -> content::RawHtml<Template> {
     content::RawHtml(Template::render(
         "error",
         context! {err: &err.to_string(), description},
@@ -49,31 +50,27 @@ async fn browse(
 ) -> content::RawHtml<Template> {
     debug!("New request for dir {:?}", dir.to_str());
 
-    let result_path = Path::new(".").join(dir);
-    let joined_path = Path::new(&state.root_dir).join(&result_path);
-    let full_path = match fs::canonicalize(&joined_path) {
-        Ok(path) => path,
-        Err(err) => {
-            return render_error_page(
-                &err,
-                &format!("Error while getting full_path of {:?}", &joined_path),
-            );
+    match {
+        let result_path = Path::new(".").join(dir);
+        let joined_path = Path::new(&state.root_dir).join(&result_path);
+
+        match fs::canonicalize(&joined_path) {
+            Ok(path) => {
+                debug!("Reading directory {:?}", path);
+                let root_dir_pathbuf = PathBuf::from(&state.root_dir);
+                let dir_result =
+                    reading_dirs::read_dir(&path, &root_dir_pathbuf, &host_header).await;
+
+                match dir_result {
+                    Ok(result) => Ok(context! {result, current_path: result_path.clone()}),
+                    Err(err) => Err(err),
+                }
+            }
+            Err(err) => Err(anyhow!(err)),
         }
-    };
-
-    debug!("Reading directory {:?}", full_path);
-    let dir_result =
-        reading_dirs::read_dir(&full_path, &PathBuf::from(&state.root_dir), &host_header).await;
-
-    match dir_result {
-        Ok(result) => content::RawHtml(Template::render(
-            "index",
-            context! {result, current_path: result_path.to_str()},
-        )),
-        Err(err) => render_error_page(
-            &err,
-            &format!("Error while reading directory {:?}", &full_path),
-        ),
+    } {
+        Ok(context) => content::RawHtml(Template::render("index", context)),
+        Err(err) => render_error_page(&err, "Error occurred"),
     }
 }
 

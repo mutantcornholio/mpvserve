@@ -114,28 +114,31 @@ fn put_entry(
             return;
         }
     };
+    trace!("put_entry, file_type: {}, {:?}", entry_filename, file_type);
 
-    let path_from_root = match entry_path.strip_prefix(&root_dir) {
-        Ok(path) => path,
-        Err(err) => {
-            warn!(
-                "Failed to get path_from_root of entry {}: {:?}",
-                entry_path_str, err
-            );
-            return;
-        }
+    let root_dir_with_slash_str = match root_dir.to_str() {
+        Some(path) => String::from(path) + "/",
+        None => return,
+    };
+    trace!(
+        "put_entry, root_dir_with_slash_str: {:?}",
+        root_dir_with_slash_str
+    );
+
+    let path_from_root = match entry_path_str.strip_prefix(&root_dir_with_slash_str) {
+        Some(path) => PathBuf::from(path),
+        None => return,
     };
 
     if file_type.is_dir() {
         match get_dir_link(&path_from_root) {
-            Some(link) => {result.dirs.push(Dir {
+            Some(link) => result.dirs.push(Dir {
                 name: String::from(entry_filename),
                 full_path: String::from(entry_path_str),
                 link,
-            })},
+            }),
             None => {}
         }
-
     } else if file_type.is_file() {
         match entry.path().extension() {
             Some(ext) => {

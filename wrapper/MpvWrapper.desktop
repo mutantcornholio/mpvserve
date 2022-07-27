@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=MpvWrapper
+Exec=HOME_ENVIRONMENT_VARIABLE_TOKEN/.bin/mpv_wrapper.sh %u
+StartupNotify=false
+MimeType=x-scheme-handler/mpv;

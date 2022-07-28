@@ -11,17 +11,17 @@ set -x
 
 cargo build --release
 
-rm -rf target/mpvserve_dist
-mkdir target/mpvserve_dist
+rm -rf "$CARGO_TARGET_DIR/mpvserve_dist"
+mkdir "$CARGO_TARGET_DIR/mpvserve_dist"
 
-cp -r public target/mpvserve_dist/
-cp -r templates target/mpvserve_dist/
-cp Rocket.toml target/mpvserve_dist/
+cp -r public "$CARGO_TARGET_DIR/mpvserve_dist/"
+cp -r templates "$CARGO_TARGET_DIR/mpvserve_dist/"
+cp Rocket.toml "$CARGO_TARGET_DIR/mpvserve_dist/"
 
-cp target/release/mpvserve target/mpvserve_dist/
+cp "$CARGO_TARGET_DIR/release/mpvserve" "$CARGO_TARGET_DIR/mpvserve_dist/"
 
-cd target
+cd "$CARGO_TARGET_DIR"
 tar -cf mpvserve.tar.gz mpvserve_dist
 cd "$script_dir"
 
-mv target/mpvserve.tar.gz .
+mv "$CARGO_TARGET_DIR/mpvserve.tar.gz" .

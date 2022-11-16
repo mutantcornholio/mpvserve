@@ -29,7 +29,6 @@ use rocket_dyn_templates::{context, Template};
 use rocket_seek_stream::SeekStream;
 
 use migration::MigratorTrait;
-use sea_orm::DbErr;
 
 /// Web server which creates mpv:// links for movies in the directory
 #[derive(Parser, Debug)]
@@ -48,6 +47,7 @@ pub struct Config {
 struct GlobalState {
     root_dir: String,
 }
+
 async fn run_migrations(rocket: Rocket<Build>) -> fairing::Result {
     let conn = &db::Db::fetch(&rocket).unwrap().conn;
     match migration::Migrator::up(conn, None).await {

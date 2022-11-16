@@ -1,2 +1,3 @@
 /target
+/src/db/migration/target
 mpvserve.tar.gz

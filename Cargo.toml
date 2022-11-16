@@ -11,6 +11,14 @@ serde = { version = "^1.0", features = ["derive"] }
 log = "^0.4.17"
 clap = { version = "^3", features = ["derive"] }
 urlencoding = "2.1.0"
-rocket_dyn_templates = {version = "^0.1.0-rc.2", features = ["handlebars"]}
-rocket_seek_stream = {git="https://github.com/StappsWorld/rocket_seek_stream"}
+rocket_dyn_templates = { version = "^0.1.0-rc.2", features = ["handlebars"] }
+rocket_seek_stream = { git = "https://github.com/StappsWorld/rocket_seek_stream" }
 anyhow = "1.0.58"
+uuid = { version = "1.1.2", features = ["v4"] }
+shrinkwraprs = "0.3.0"
+shellexpand = "2.1.2"
+rocket_db_pools = { version = "0.1.0-rc.2", features = ["sqlx_sqlite"] }
+sea-orm = { version = "0.10.3", features = ["sqlx-sqlite", "runtime-tokio-native-tls", "macros"] }
+
+migration = { path = "src/db/migration" }
+home = "0.5.4"

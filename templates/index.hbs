@@ -34,13 +34,36 @@
 <div class="wrapper movies">
   {{#each result.movies}}
     <div class="row">
-      <a href="{{link}}">
-        <div class="icon1 video"></div>
-        <div class="link_text">{{name}}</div>
+      <a href="{{link}}" data-path="{{rel_path}}">
+        <div class="flex-container">
+          <div class="icon1 video flex-item"></div>
+          <div class="link_text flex-item">{{name}}</div>
+          {{#if progress}}
+            <div class="link_text progress flex-item"
+                 data-percentage="{{progress.percentage}}"
+                 data-timestamp="{{progress.timestamp}}"
+            >
+              {{progress.percentage}}%
+            </div>
+          {{/if}}
+        </div>
       </a>
     </div>
   {{/each}}
 </div>
+<script type=application/javascript>
+  document.querySelectorAll(".progress").forEach(el => {
+    if (el.dataset.percentage && el.dataset.timestamp) {
+      let lastDate = new Date(parseInt(el.dataset.timestamp) * 1000);
+      let percentage = parseInt(el.dataset.percentage);
+      if (percentage > 90) {
+        el.classList.add("viewed");
+      }
+
+      el.innerText = `${percentage}% at ${lastDate.toISOString().substring(0, 10)} ${lastDate.toLocaleTimeString("en-GB").substring(0, 5)}`;
+    }
+  });
+</script>
 
 </body>
 </html>

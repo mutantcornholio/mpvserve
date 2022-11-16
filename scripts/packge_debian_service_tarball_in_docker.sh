@@ -30,7 +30,7 @@ docker run \
 
 cleanup() {
   exit_code=$?
-  docker rmi "$image_tag"
+  docker rmi --force "$image_tag"
   exit $exit_code
 }
 trap cleanup EXIT

@@ -7,7 +7,7 @@ mod utils;
 #[macro_use]
 extern crate rocket;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 use clap::Parser;
 use log::debug;
 use std::format;
@@ -16,18 +16,21 @@ use std::path::{Path, PathBuf};
 
 use crate::tracked_file_stream::TrackedFileStream;
 use rocket::{
-    Rocket,
-    Build,
-    response::{content, Redirect},
-    fs::FileServer,
+    serde::json::Json,
+    serde::Serialize,
     fairing,
     fairing::AdHoc,
+    fs::FileServer,
+    response::{content, Redirect},
+    Build,
+    Rocket,
     State
 };
 use rocket_db_pools::{Connection, Database};
 use rocket_dyn_templates::{context, Template};
 use rocket_seek_stream::SeekStream;
 
+use crate::reading_dirs::ReadDirResult;
 use migration::MigratorTrait;
 
 /// Web server which creates mpv:// links for movies in the directory
@@ -51,7 +54,7 @@ struct GlobalState {
 async fn run_migrations(rocket: Rocket<Build>) -> fairing::Result {
     let conn = &db::Db::fetch(&rocket).unwrap().conn;
     match migration::Migrator::up(conn, None).await {
-        Ok(_) => {Ok(rocket)}
+        Ok(_) => Ok(rocket),
         Err(e) => {
             log::error!("Migration failed {:?}", e);
             Err(rocket)
@@ -71,6 +74,28 @@ async fn index() -> Redirect {
     Redirect::to(uri!(browse(dir = "")))
 }
 
+async fn dir_request(
+    dir: &PathBuf,
+    root_dir: &str,
+    host_header: &http::HostHeader,
+    user_id: &http::UserId,
+    database: &Connection<db::Db>,
+) -> Result<ReadDirResult> {
+    let conn = &*database;
+    let result_path = Path::new(".").join(dir);
+    let joined_path = Path::new(&root_dir).join(&result_path);
+
+    match fs::canonicalize(&joined_path) {
+        Ok(path) => {
+            debug!("Reading directory {:?}", path);
+            let root_dir_pathbuf = PathBuf::from(&root_dir);
+
+            reading_dirs::read_dir(&path, &root_dir_pathbuf, &host_header, &user_id, conn).await
+        }
+        Err(err) => Err(anyhow!(err)),
+    }
+}
+
 #[get("/browse/<dir..>")]
 async fn browse(
     dir: PathBuf,
@@ -81,30 +106,42 @@ async fn browse(
 ) -> content::RawHtml<Template> {
     debug!("New request for dir {:?}", dir.to_str());
 
-    let conn = &*database;
-
-    match {
-        let result_path = Path::new(".").join(dir);
-        let joined_path = Path::new(&state.root_dir).join(&result_path);
-
-        match fs::canonicalize(&joined_path) {
-            Ok(path) => {
-                debug!("Reading directory {:?}", path);
-                let root_dir_pathbuf = PathBuf::from(&state.root_dir);
-                let dir_result =
-                    reading_dirs::read_dir(&path, &root_dir_pathbuf, &host_header, &user_id, conn)
-                        .await;
-
-                match dir_result {
-                    Ok(result) => Ok(context! {result, current_path: result_path.clone(), user_id}),
-                    Err(err) => Err(err),
-                }
-            }
-            Err(err) => Err(anyhow!(err)),
+    match dir_request(&dir, &state.root_dir, &host_header, &user_id, &database).await {
+        Ok(result) => {
+            let context = context! {result, current_path: dir.clone(), user_id};
+            content::RawHtml(Template::render("index", context))
         }
-    } {
-        Ok(context) => content::RawHtml(Template::render("index", context)),
         Err(err) => render_error_page(&err, "Error occurred"),
+    }
+}
+
+#[derive(Serialize, Debug)]
+#[serde(crate = "rocket::serde")]
+pub enum ApiBrowseResult {
+    Error(JsonError),
+    Result(ReadDirResult),
+}
+
+#[derive(Serialize, Debug)]
+#[serde(crate = "rocket::serde")]
+pub struct JsonError {
+    message: String,
+}
+
+#[get("/api/browse/<dir..>")]
+async fn api_browse(
+    dir: PathBuf,
+    state: &State<GlobalState>,
+    host_header: http::HostHeader,
+    user_id: http::UserId,
+    database: Connection<db::Db>,
+) -> Json<ApiBrowseResult> {
+    debug!("New API request for dir {:?}", dir.to_str());
+    match dir_request(&dir, &state.root_dir, &host_header, &user_id, &database).await {
+        Ok(result) => Json(ApiBrowseResult::Result(result)),
+        Err(err) => Json(ApiBrowseResult::Error(JsonError {
+            message: err.to_string(),
+        })),
     }
 }
 
@@ -137,7 +174,7 @@ async fn files<'a>(
 async fn main() -> Result<(), rocket::Error> {
     let args = CliArgs::parse();
     let _rocket = rocket::build()
-        .mount("/", routes![index, browse, files])
+        .mount("/", routes![index, browse, api_browse, files])
         .mount("/public", FileServer::from("./public"))
         .manage(GlobalState { root_dir: args.dir })
         .attach(Template::fairing())

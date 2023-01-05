@@ -10,10 +10,10 @@
 </head>
 <body>
 
-<h1>Browsing {{current_path}}</h1>
+<h1>Browsing ./{{current_path}}</h1>
 
 <div class="wrapper dir">
-  {{#unless (eq current_path "./")}}
+  {{#unless (eq current_path "")}}
     <div class="row">
       <a href="..">
         <div class="icon1 dir"></div>
@@ -34,35 +34,77 @@
 <div class="wrapper movies">
   {{#each result.movies}}
     <div class="row">
-      <a href="{{link}}" data-path="{{rel_path}}">
+      <a href="{{link}}" data-item-id="{{id}}">
         <div class="flex-container">
           <div class="icon1 video flex-item"></div>
           <div class="link_text flex-item">{{name}}</div>
-          {{#if progress}}
-            <div class="link_text progress flex-item"
-                 data-percentage="{{progress.percentage}}"
-                 data-timestamp="{{progress.timestamp}}"
-            >
-              {{progress.percentage}}%
-            </div>
-          {{/if}}
+          <div class="link_text progress flex-item"
+               data-percentage="{{progress.percentage}}"
+               data-timestamp="{{progress.timestamp}}"
+          >
+          </div>
         </div>
       </a>
     </div>
   {{/each}}
 </div>
 <script type=application/javascript>
-  document.querySelectorAll(".progress").forEach(el => {
-    if (el.dataset.percentage && el.dataset.timestamp) {
-      let lastDate = new Date(parseInt(el.dataset.timestamp) * 1000);
-      let percentage = parseInt(el.dataset.percentage);
-      if (percentage > 90) {
-        el.classList.add("viewed");
-      }
+  const current_path = encodeURIComponent("{{current_path}}");
 
-      el.innerText = `${percentage}% at ${lastDate.toISOString().substring(0, 10)} ${lastDate.toLocaleTimeString("en-GB").substring(0, 5)}`;
-    }
-  });
+  function renderProgress() {
+    document.querySelectorAll(".progress").forEach(el => {
+      if (el.dataset.percentage && el.dataset.timestamp) {
+        let lastDate = new Date(parseInt(el.dataset.timestamp) * 1000);
+        let percentage = parseInt(el.dataset.percentage);
+        if (percentage > 90) {
+          el.classList.add("viewed");
+        } else {
+          el.classList.remove("viewed");
+        }
+
+        el.innerText = `${percentage}% at ${lastDate.toISOString().substring(0, 10)} ${lastDate.toLocaleTimeString("en-GB").substring(0, 5)}`;
+      }
+    });
+  }
+
+  async function updateProgress() {
+    fetch(`/api/browse/${current_path}`).then(
+      async res => {
+        const parsed = await res.json();
+
+        if (parsed.Error) {
+          console.error("Progress update failed", parsed.Error);
+          return;
+        }
+
+        if (!Array.isArray(parsed.Result?.movies)) {
+          console.error("Unexpected progress update result: ", parsed);
+          return;
+        }
+
+        for (const item of parsed.Result?.movies) {
+          const node = document.querySelector(`[data-item-id="${item.id}"]`);
+
+          if (node !== null) {
+            const progressNode = node.querySelector(".progress");
+            if (item.progress) {
+              progressNode.dataset.percentage = String(item.progress.percentage);
+              progressNode.dataset.timestamp = String(item.progress.timestamp);
+            } else {
+              progressNode.dataset.percentage = "";
+              progressNode.dataset.timestamp = "";
+            }
+          }
+        }
+
+        renderProgress();
+      }
+    );
+  }
+
+  renderProgress();
+
+  setInterval(updateProgress, 5 * 60 * 1000);
 </script>
 
 </body>

@@ -2,11 +2,13 @@ use crate::{db, http, utils};
 use anyhow::{Context, Result};
 use log::trace;
 use rocket::serde::Serialize;
+use rocket_db_pools::Connection;
 use sea_orm::*;
 use std::fs;
 use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 
+use crate::db::Db;
 use db::prelude::*;
 
 static MOVIE_EXTENSIONS: &[&str] = &["mkv", "avi"];
@@ -17,6 +19,7 @@ pub struct ResultItem {
     name: String,
     full_path: String,
     rel_path: String,
+    id: String, // Just md5 of full_path
     link: String,
 
     progress: Option<ResultItemProgress>,
@@ -136,6 +139,9 @@ async fn put_entry(
 
     trace!("put_entry, path_properties {:?}", path_properties);
 
+    let entry_hash = md5::compute(path_properties.full_path.as_bytes());
+    let entry_hash = format!("{:x}", entry_hash);
+
     match path_properties.file_type {
         FileTypes::Dir => {
             let link = get_dir_link(&path_properties.urlencoded_path);
@@ -143,6 +149,7 @@ async fn put_entry(
                 name: path_properties.filename.clone(),
                 full_path: path_properties.full_path.clone(),
                 rel_path: path_properties.rel_path.clone(),
+                id: entry_hash,
                 link,
                 progress: None,
             })
@@ -159,6 +166,7 @@ async fn put_entry(
                         name: path_properties.filename.clone(),
                         full_path: path_properties.full_path.clone(),
                         rel_path: path_properties.rel_path.clone(),
+                        id: entry_hash,
                         link,
                         progress,
                     });
@@ -198,7 +206,7 @@ pub async fn read_dir(
     root_dir: &Path,
     host_header: &http::HostHeader,
     user_id: &http::UserId,
-    conn: &DatabaseConnection,
+    conn: &Connection<Db>,
 ) -> Result<ReadDirResult> {
     let mut res = ReadDirResult {
         dirs: Vec::new(),

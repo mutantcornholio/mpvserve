@@ -1,4 +1,4 @@
-use crate::{db, http, utils};
+use crate::{db, http};
 use anyhow::{Context, Result};
 use log::trace;
 use rocket::serde::Serialize;
@@ -42,6 +42,7 @@ pub struct ReadDirResult {
 fn get_dir_link(urlencoded_path: &str) -> String {
     let mut res = String::from("/browse");
 
+    res += "/";
     res += urlencoded_path;
 
     res
@@ -54,7 +55,7 @@ fn get_mpv_link(
 ) -> String {
     let mut res = String::from("mpv://");
     res += host_header.to_string();
-    res += "/files";
+    res += "/files/";
 
     res += urlencoded_path;
 
@@ -88,18 +89,27 @@ fn get_extension(entry_path: &Path) -> Option<String> {
 }
 
 fn get_path_properties(entry: &DirEntry, root_dir: &Path) -> Option<PathProperties> {
+    let mut root_depth = 0;
+    root_dir.iter().for_each(|_| {
+        root_depth += 1;
+    });
     let entry_pathbuf = entry.path();
-    let entry_pathbuf_str = entry_pathbuf.to_str()?;
-    let full_path = String::from(entry_pathbuf_str);
 
-    let filename = String::from(entry_pathbuf.file_name()?.to_str()?);
+    let stripped_path_chunks: Vec<&str> = entry_pathbuf
+        .iter()
+        .skip(root_depth)
+        .filter_map(|el| el.to_str())
+        .collect();
+    let rel_path = stripped_path_chunks.join("/");
+    let urlencoded_path_chunks: Vec<String> = stripped_path_chunks
+        .iter()
+        .map(|el| urlencoding::encode(el).to_string())
+        .collect();
+    let urlencoded_path = urlencoded_path_chunks.join("/");
 
+    let full_path = entry_pathbuf.to_str()?.to_string();
+    let filename = entry_pathbuf.file_name()?.to_str()?.to_string();
     let file_type = entry.file_type().ok()?;
-
-    let root_dir_with_trailing_slash = String::from(root_dir.to_str()?) + "/";
-    let stripped_path = entry_pathbuf_str.strip_prefix(&root_dir_with_trailing_slash)?;
-
-    let urlencoded_path = utils::get_urlencoded_path(&PathBuf::from(stripped_path))?;
 
     // Unlike everything else, not getting an extension is expected
     let extension = get_extension(&entry_pathbuf);
@@ -118,7 +128,7 @@ fn get_path_properties(entry: &DirEntry, root_dir: &Path) -> Option<PathProperti
         filename,
         file_type,
         full_path,
-        rel_path: String::from(stripped_path),
+        rel_path,
         urlencoded_path,
         extension,
     })
@@ -156,21 +166,24 @@ async fn put_entry(
         }
         FileTypes::File => {
             if let Some(ext) = path_properties.extension {
-                if MOVIE_EXTENSIONS.contains(&ext.as_str()) {
-                    let link = get_mpv_link(&path_properties.urlencoded_path, host_header, user_id);
-
-                    let progress =
-                        get_item_progress(&path_properties.urlencoded_path, user_id, conn).await;
-
-                    result.movies.push(ResultItem {
-                        name: path_properties.filename.clone(),
-                        full_path: path_properties.full_path.clone(),
-                        rel_path: path_properties.rel_path.clone(),
-                        id: entry_hash,
-                        link,
-                        progress,
-                    });
+                if !MOVIE_EXTENSIONS.contains(&ext.as_str()) {
+                    return Ok(());
                 }
+                let link = get_mpv_link(&path_properties.urlencoded_path, host_header, user_id);
+
+                let progress =
+                    get_item_progress(&path_properties.urlencoded_path, user_id, conn).await;
+
+                result.movies.push(ResultItem {
+                    name: path_properties.filename.clone(),
+                    full_path: path_properties.full_path.clone(),
+                    rel_path: path_properties.rel_path.clone(),
+                    id: entry_hash,
+                    link,
+                    progress,
+                });
+            } else {
+                return Ok(());
             }
         }
         _ => {}

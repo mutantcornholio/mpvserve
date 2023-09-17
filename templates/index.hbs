@@ -49,7 +49,7 @@
   {{/each}}
 </div>
 <script type=application/javascript>
-  const current_path = encodeURIComponent("{{current_path}}");
+  const current_path = "{{current_path}}".split("/").map(el => encodeURIComponent(el)).join("/");
 
   function renderProgress() {
     document.querySelectorAll(".progress").forEach(el => {

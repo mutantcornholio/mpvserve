@@ -2,7 +2,6 @@ mod db;
 mod http;
 mod reading_dirs;
 mod tracked_file_stream;
-mod utils;
 
 #[macro_use]
 extern crate rocket;
@@ -16,15 +15,13 @@ use std::path::{Path, PathBuf};
 
 use crate::tracked_file_stream::TrackedFileStream;
 use rocket::{
-    serde::json::Json,
-    serde::Serialize,
     fairing,
     fairing::AdHoc,
     fs::FileServer,
     response::{content, Redirect},
-    Build,
-    Rocket,
-    State
+    serde::json::Json,
+    serde::Serialize,
+    Build, Rocket, State,
 };
 use rocket_db_pools::{Connection, Database};
 use rocket_dyn_templates::{context, Template};

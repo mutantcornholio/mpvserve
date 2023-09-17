@@ -1,4 +1,4 @@
-use crate::{db, utils};
+use crate::db;
 use rocket::futures::executor::block_on;
 use rocket::tokio::fs::File;
 use rocket::tokio::io::{AsyncRead, AsyncSeek, ReadBuf};
@@ -49,8 +49,13 @@ impl TrackedFileStream {
         user_id: &str,
         database: Connection<db::Db>,
     ) -> std::io::Result<Self> {
-        let urlencoded_path = utils::get_urlencoded_path(rel_path).unwrap();
-        let result_path = urlencoded_path + "?" + user_id;
+        // let urlencoded_path = /utils::get_urlencoded_path(rel_path).unwrap();
+        let urlencoded_path: Vec<String> = rel_path
+            .iter()
+            .filter_map(|el| el.to_str())
+            .map(|el| urlencoding::encode(el).to_string())
+            .collect();
+        let result_path = urlencoded_path.join("/") + "?" + user_id;
         let handle = Handle::current();
         let _ = handle.enter();
         let file = match block_on(File::open(abs_path)) {

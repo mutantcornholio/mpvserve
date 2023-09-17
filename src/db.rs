@@ -4,7 +4,6 @@ pub mod prelude;
 pub use migration;
 use std::fs::create_dir_all;
 
-use home;
 use rocket::figment::Figment;
 use rocket_db_pools::Database;
 use sea_orm::*;

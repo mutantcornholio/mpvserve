@@ -11,6 +11,8 @@ set -x
 
 cargo build --release
 
+CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-"$(pwd)/target"}"
+
 rm -rf "$CARGO_TARGET_DIR/mpvserve_dist"
 mkdir "$CARGO_TARGET_DIR/mpvserve_dist"
 

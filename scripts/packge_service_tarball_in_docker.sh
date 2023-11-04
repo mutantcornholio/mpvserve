@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-set -eu -o pipefail
+set -e -o pipefail
 
 script_dir="$(dirname -- "${BASH_SOURCE[0]}")"
-cd "${script_dir}/debian-stretch-build"
+cd "${script_dir}/ubuntu-focal-build"
 
 export REPO_DIR="$(readlink -f ../..)"
 

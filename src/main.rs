@@ -37,6 +37,9 @@ struct CliArgs {
     /// Root directory with the movies
     #[clap(long)]
     dir: String,
+    /// Port to listen on
+    #[clap(long, default_value_t = 8000)]
+    port: u16,
 }
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -171,6 +174,7 @@ async fn files<'a>(
 async fn main() -> Result<(), rocket::Error> {
     let args = CliArgs::parse();
     let _rocket = rocket::build()
+        .configure(rocket::Config::figment().merge(("port", args.port)))
         .mount("/", routes![index, browse, api_browse, files])
         .mount("/public", FileServer::from("./public"))
         .manage(GlobalState { root_dir: args.dir })
